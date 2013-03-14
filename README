@@ -52,8 +52,6 @@ gem install ruby-binlog
   
     if master_log_file and master_log_pos
       client.set_position(master_log_file, master_log_pos)
-    elsif master_log_pos
-      client.position = master_log_pos
     end
   
     while event = client.wait_for_next_event
