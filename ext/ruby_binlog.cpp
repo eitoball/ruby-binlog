@@ -53,14 +53,24 @@ struct Client {
     return Qnil;
   }
 
+  static VALUE _connect(void *data) {
+    Client *p = reinterpret_cast<Client *>(data);
+    return p->m_binlog->connect();
+  }
+
   static VALUE connect(VALUE self) {
     Client *p;
     int result;
 
     Data_Get_Struct(self, Client, p);
+
+#ifdef HAVE_RB_THREAD_BLOCKING_REGION
+    result = rb_thread_blocking_region(_connect, p, RUBY_UBF_IO, NULL);
+#else
     TRAP_BEG;
-    result = p->m_binlog->connect();
+    result = _connect(p);
     TRAP_END;
+#endif
 
     return (result == 0) ? Qtrue : Qfalse;
   }
@@ -99,6 +109,12 @@ struct Client {
   }
    */
 
+  static VALUE _is_open(void *data) {
+    mysql::system::Binlog_tcp_driver *driver;
+    driver = reinterpret_cast<mysql::system::Binlog_tcp_driver *>(data);
+    return driver->m_socket->is_open();
+  }
+
   static VALUE is_closed(VALUE self) {
     Client *p;
     mysql::system::Binlog_tcp_driver *driver;
@@ -113,14 +129,72 @@ struct Client {
     if (driver->m_socket) {
       bool socket_is_open;
 
+#ifdef HAVE_RB_THREAD_BLOCKING_REGION
+      socket_is_open = rb_thread_blocking_region(_is_open, driver, RUBY_UBF_IO, NULL);
+#else
       TRAP_BEG;
-      socket_is_open = driver->m_socket->is_open();
+      socket_is_open = _is_open(driver);
       TRAP_END;
+#endif
 
       return socket_is_open ? Qfalse : Qtrue;
     } else {
       return Qtrue;
     }
+  }
+
+  static VALUE _wait_for_next_event_loop(void *data) {
+    void **args;
+    Client *p;
+    mysql::system::Binlog_tcp_driver *driver;
+    Binary_log_event **event;
+    int *closed;
+
+    int result = ERR_EOF;
+    timeval interval = { 0, WAIT_INTERVAL };
+
+    args = reinterpret_cast<void **>(data);
+    p = reinterpret_cast<Client *>(args[0]);
+    driver = reinterpret_cast<mysql::system::Binlog_tcp_driver *>(args[1]);
+    event = reinterpret_cast<Binary_log_event **>(args[2]);
+    closed = reinterpret_cast<int *>(args[3]);
+
+    while (1) {
+      if (driver->m_event_queue->is_not_empty()) {
+        result = p->m_binlog->wait_for_next_event(event);
+        break;
+      } else {
+        if (driver->m_socket && driver->m_socket->is_open()) {
+          rb_thread_wait_for(interval);
+        } else {
+          *closed = 1;
+          driver->shutdown();
+          rb_thread_wait_for(interval);
+          break;
+        }
+      }
+    }
+
+    return result;
+  }
+
+  static VALUE _disconnect(void *data) {
+    mysql::system::Binlog_tcp_driver *driver;
+    driver = reinterpret_cast<mysql::system::Binlog_tcp_driver *>(data);
+    driver->disconnect();
+    return Qnil;
+  }
+
+  static VALUE _wait_for_next_event(void *data) {
+    void **args;
+    Client *p;
+    Binary_log_event **event;
+
+    args = reinterpret_cast<void **>(data);
+    p = reinterpret_cast<Client *>(args[0]);
+    event = reinterpret_cast<Binary_log_event **>(args[1]);
+
+    return p->m_binlog->wait_for_next_event(event);
   }
 
   static VALUE wait_for_next_event(VALUE self) {
@@ -136,36 +210,45 @@ struct Client {
     if (driver) {
       int closed = 0;
       timeval interval = { 0, WAIT_INTERVAL };
+      void *args[4];
 
+      args[0] = reinterpret_cast<void *>(p);
+      args[1] = reinterpret_cast<void *>(driver);
+      args[2] = reinterpret_cast<void *>(&event);
+      args[3] = reinterpret_cast<void *>(&closed);
+
+#ifdef HAVE_RB_THREAD_BLOCKING_REGION
+      result = rb_thread_blocking_region(_disconnect, driver, RUBY_UBF_IO, NULL);
+#else
       TRAP_BEG;
-      while (1) {
-        if (driver->m_event_queue->is_not_empty()) {
-          result = p->m_binlog->wait_for_next_event(&event);
-          break;
-        } else {
-          if (driver->m_socket && driver->m_socket->is_open()) {
-            rb_thread_wait_for(interval);
-          } else {
-            closed = 1;
-            driver->shutdown();
-            rb_thread_wait_for(interval);
-            break;
-          }
-        }
-      }
+      result = _wait_for_next_event_loop(args);
       TRAP_END;
+#endif
 
       if (closed) {
+#ifdef HAVE_RB_THREAD_BLOCKING_REGION
+        rb_thread_blocking_region(_disconnect, driver, RUBY_UBF_IO, NULL);
+#else
         TRAP_BEG;
-        driver->disconnect();
+        _disconnect(driver);
         TRAP_END;
+#endif
 
         rb_raise(rb_eBinlogError, "MySQL server has gone away");
       }
     } else {
+      void *args[2];
+
+      args[0] = reinterpret_cast<void *>(p);
+      args[1] = reinterpret_cast<void *>(&event);
+
+#ifdef HAVE_RB_THREAD_BLOCKING_REGION
+      result = rb_thread_blocking_region(_wait_for_next_event, args, RUBY_UBF_IO, NULL);
+#else
       TRAP_BEG;
-      result = p->m_binlog->wait_for_next_event(&event);
+      result = _wait_for_next_event(args);
       TRAP_END;
+#endif
     }
 
 
@@ -235,6 +318,32 @@ struct Client {
     return retval;
   }
 
+  static VALUE _set_position_pos(void *data) {
+    void **args;
+    Client *p;
+    unsigned long i_position;
+
+    args = reinterpret_cast<void **>(data);
+    p = reinterpret_cast<Client *>(args[0]);
+    i_position = reinterpret_cast<uintptr_t>(args[1]);
+
+    return p->m_binlog->set_position(i_position);
+  }
+
+  static VALUE _set_position_filename_pos(void *data) {
+    void **args;
+    Client *p;
+    std::string *s_filename;
+    unsigned long i_position;
+
+    args = reinterpret_cast<void **>(data);
+    p = reinterpret_cast<Client *>(args[0]);
+    s_filename = reinterpret_cast<std::string *>(args[1]);
+    i_position = reinterpret_cast<uintptr_t>(args[2]);
+
+    return p->m_binlog->set_position(*s_filename, i_position);
+  }
+
   static VALUE set_position(int argc, VALUE *argv, VALUE self) {
     Client *p;
     VALUE filename, position, retval = Qnil;
@@ -245,18 +354,38 @@ struct Client {
 
     if (NIL_P(position)) {
       unsigned long i_position;
+      void *args[2];
+
       i_position = NUM2ULONG(filename);
+
+      args[0] = reinterpret_cast<void *>(p);
+      args[1] = reinterpret_cast<void *>(i_position);
+
+#ifdef HAVE_RB_THREAD_BLOCKING_REGION
+      result = rb_thread_blocking_region(_set_position_pos, args, RUBY_UBF_IO, NULL);
+#else
       TRAP_BEG;
-      result = p->m_binlog->set_position(i_position);
+      _set_position_pos(args);
       TRAP_END;
+#endif
     } else {
       unsigned long i_position;
+      void *args[3];
+
       Check_Type(filename, T_STRING);
       i_position = NUM2ULONG(position);
       std::string s_filename(StringValuePtr(filename));
+
+      args[0] = reinterpret_cast<void *>(p);
+      args[1] = reinterpret_cast<void *>(&s_filename);
+      args[2] = reinterpret_cast<void *>(i_position);
+#ifdef HAVE_RB_THREAD_BLOCKING_REGION
+      result = rb_thread_blocking_region(_set_position_filename_pos, args, RUBY_UBF_IO, NULL);
+#else
       TRAP_BEG;
-      result = p->m_binlog->set_position(s_filename, i_position);
+      _set_position_name_pos(args);
       TRAP_END;
+#endif
     }
 
     switch (result) {
@@ -277,11 +406,22 @@ struct Client {
     Client *p;
     VALUE retval = Qnil;
     int result;
+    unsigned long i_position;
+    void *args[2];
 
     Data_Get_Struct(self, Client, p);
+
+    i_position = NUM2ULONG(position);
+    args[0] = reinterpret_cast<void *>(p);
+    args[1] = reinterpret_cast<void *>(i_position);
+
+#ifdef HAVE_RB_THREAD_BLOCKING_REGION
+    result = rb_thread_blocking_region(_set_position_pos, args, RUBY_UBF_IO, NULL);
+#else
     TRAP_BEG;
-    result = p->m_binlog->set_position(NUM2ULONG(position));
+    result = _set_position_pos(args);
     TRAP_END;
+#endif
 
     switch (result) {
     case ERR_OK:
@@ -297,6 +437,23 @@ struct Client {
     return retval;
   }
 
+  static VALUE _get_position(void *data) {
+    Client *p = reinterpret_cast<Client *>(data);
+    return p->m_binlog->get_position();
+  }
+
+  static VALUE _get_position_filename(void *data) {
+    void **args;
+    Client *p;
+    std::string *s_filename;
+
+    args = reinterpret_cast<void **>(data);
+    p = reinterpret_cast<Client *>(args[0]);
+    s_filename = reinterpret_cast<std::string *>(args[1]);
+
+    return p->m_binlog->get_position(*s_filename);
+  }
+
   static VALUE get_position(int argc, VALUE *argv, VALUE self) {
     Client *p;
     VALUE filename;
@@ -306,13 +463,29 @@ struct Client {
     rb_scan_args(argc, argv, "01", &filename);
 
     if (NIL_P(filename)) {
-      position = p->m_binlog->get_position();
+#ifdef HAVE_RB_THREAD_BLOCKING_REGION
+      position = rb_thread_blocking_region(_get_position, p, RUBY_UBF_IO, NULL);
+#else
+      TRAP_BEG;
+      position = _get_position(p);
+      TRAP_END;
+#endif
     } else {
       Check_Type(filename, T_STRING);
+
       std::string s_filename(StringValuePtr(filename));
+      void *args[2];
+
+      args[0] = reinterpret_cast<void *>(p);
+      args[1] = reinterpret_cast<void *>(&s_filename);
+
+#ifdef HAVE_RB_THREAD_BLOCKING_REGION
+      position = rb_thread_blocking_region(_get_position_filename, args, RUBY_UBF_IO, NULL);
+#else
       TRAP_BEG;
-      position = p->m_binlog->get_position(s_filename);
+      position = _get_position_filename(args);
       TRAP_END;
+#endif
     }
 
     return ULONG2NUM(position);
@@ -323,9 +496,13 @@ struct Client {
     Data_Get_Struct(self, Client, p);
     unsigned long position;
 
+#ifdef HAVE_RB_THREAD_BLOCKING_REGION
+    position = rb_thread_blocking_region(_get_position, p, RUBY_UBF_IO, NULL);
+#else
     TRAP_BEG;
-    position = p->m_binlog->get_position();
+    position = _get_position(p);
     TRAP_END;
+#endif
 
     return ULONG2NUM(position);
   }

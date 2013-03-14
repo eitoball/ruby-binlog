@@ -7,7 +7,12 @@
 #include <string>
 #include <binlog_api.h>
 #include <ruby.h>
+
+#ifndef HAVE_RB_THREAD_BLOCKING_REGION
 #include <rubysig.h>
+#endif
+
+#include <stdint.h>
 
 #include "ruby_binlog_event.h"
 
