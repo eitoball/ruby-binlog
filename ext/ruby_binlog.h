@@ -7,7 +7,10 @@
 #include <string>
 #include <binlog_api.h>
 #include <ruby.h>
+
+#ifndef RUBY_UBF_IO
 #include <rubysig.h>
+#endif
 
 #include "ruby_binlog_event.h"
 

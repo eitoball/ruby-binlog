@@ -58,9 +58,13 @@ struct Client {
     int result;
 
     Data_Get_Struct(self, Client, p);
+#ifndef RUBY_UBF_IO
     TRAP_BEG;
+#endif
     result = p->m_binlog->connect();
+#ifndef RUBY_UBF_IO
     TRAP_END;
+#endif
 
     return (result == 0) ? Qtrue : Qfalse;
   }
@@ -113,9 +117,13 @@ struct Client {
     if (driver->m_socket) {
       bool socket_is_open;
 
+#ifndef RUBY_UBF_IO
       TRAP_BEG;
+#endif
       socket_is_open = driver->m_socket->is_open();
+#ifndef RUBY_UBF_IO
       TRAP_END;
+#endif
 
       return socket_is_open ? Qfalse : Qtrue;
     } else {
@@ -137,7 +145,9 @@ struct Client {
       int closed = 0;
       timeval interval = { 0, WAIT_INTERVAL };
 
+#ifndef RUBY_UBF_IO
       TRAP_BEG;
+#endif
       while (1) {
         if (driver->m_event_queue->is_not_empty()) {
           result = p->m_binlog->wait_for_next_event(&event);
@@ -153,19 +163,29 @@ struct Client {
           }
         }
       }
+#ifndef RUBY_UBF_IO
       TRAP_END;
+#endif
 
       if (closed) {
+#ifndef RUBY_UBF_IO
         TRAP_BEG;
+#endif
         driver->disconnect();
+#ifndef RUBY_UBF_IO
         TRAP_END;
+#endif
 
         rb_raise(rb_eBinlogError, "MySQL server has gone away");
       }
     } else {
+#ifndef RUBY_UBF_IO
       TRAP_BEG;
+#endif
       result = p->m_binlog->wait_for_next_event(&event);
+#ifndef RUBY_UBF_IO
       TRAP_END;
+#endif
     }
 
 
@@ -246,17 +266,25 @@ struct Client {
     if (NIL_P(position)) {
       unsigned long i_position;
       i_position = NUM2ULONG(filename);
+#ifndef RUBY_UBF_IO
       TRAP_BEG;
+#endif
       result = p->m_binlog->set_position(i_position);
+#ifndef RUBY_UBF_IO
       TRAP_END;
+#endif
     } else {
       unsigned long i_position;
       Check_Type(filename, T_STRING);
       i_position = NUM2ULONG(position);
       std::string s_filename(StringValuePtr(filename));
+#ifndef RUBY_UBF_IO
       TRAP_BEG;
+#endif
       result = p->m_binlog->set_position(s_filename, i_position);
+#ifndef RUBY_UBF_IO
       TRAP_END;
+#endif
     }
 
     switch (result) {
@@ -279,9 +307,13 @@ struct Client {
     int result;
 
     Data_Get_Struct(self, Client, p);
+#ifndef RUBY_UBF_IO
     TRAP_BEG;
+#endif
     result = p->m_binlog->set_position(NUM2ULONG(position));
+#ifndef RUBY_UBF_IO
     TRAP_END;
+#endif
 
     switch (result) {
     case ERR_OK:
@@ -310,9 +342,13 @@ struct Client {
     } else {
       Check_Type(filename, T_STRING);
       std::string s_filename(StringValuePtr(filename));
+#ifndef RUBY_UBF_IO
       TRAP_BEG;
+#endif
       position = p->m_binlog->get_position(s_filename);
+#ifndef RUBY_UBF_IO
       TRAP_END;
+#endif
     }
 
     return ULONG2NUM(position);
@@ -323,9 +359,13 @@ struct Client {
     Data_Get_Struct(self, Client, p);
     unsigned long position;
 
+#ifndef RUBY_UBF_IO
     TRAP_BEG;
+#endif
     position = p->m_binlog->get_position();
+#ifndef RUBY_UBF_IO
     TRAP_END;
+#endif
 
     return ULONG2NUM(position);
   }
