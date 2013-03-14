@@ -65,7 +65,7 @@ struct Client {
     Data_Get_Struct(self, Client, p);
 
 #ifdef HAVE_RB_THREAD_BLOCKING_REGION
-    result = rb_thread_blocking_region(_connect, p, RUBY_UBF_IO, NULL);
+    result = rb_thread_blocking_region(_connect, p, RUBY_UBF_IO, 0);
 #else
     TRAP_BEG;
     result = _connect(p);
@@ -130,7 +130,7 @@ struct Client {
       bool socket_is_open;
 
 #ifdef HAVE_RB_THREAD_BLOCKING_REGION
-      socket_is_open = rb_thread_blocking_region(_is_open, driver, RUBY_UBF_IO, NULL);
+      socket_is_open = rb_thread_blocking_region(_is_open, driver, RUBY_UBF_IO, 0);
 #else
       TRAP_BEG;
       socket_is_open = _is_open(driver);
@@ -218,7 +218,7 @@ struct Client {
       args[3] = reinterpret_cast<void *>(&closed);
 
 #ifdef HAVE_RB_THREAD_BLOCKING_REGION
-      result = rb_thread_blocking_region(_disconnect, driver, RUBY_UBF_IO, NULL);
+      result = rb_thread_blocking_region(_wait_for_next_event_loop, args, RUBY_UBF_IO, 0);
 #else
       TRAP_BEG;
       result = _wait_for_next_event_loop(args);
@@ -227,7 +227,7 @@ struct Client {
 
       if (closed) {
 #ifdef HAVE_RB_THREAD_BLOCKING_REGION
-        rb_thread_blocking_region(_disconnect, driver, RUBY_UBF_IO, NULL);
+        rb_thread_blocking_region(_disconnect, driver, RUBY_UBF_IO, 0);
 #else
         TRAP_BEG;
         _disconnect(driver);
@@ -243,7 +243,7 @@ struct Client {
       args[1] = reinterpret_cast<void *>(&event);
 
 #ifdef HAVE_RB_THREAD_BLOCKING_REGION
-      result = rb_thread_blocking_region(_wait_for_next_event, args, RUBY_UBF_IO, NULL);
+      result = rb_thread_blocking_region(_wait_for_next_event, args, RUBY_UBF_IO, 0);
 #else
       TRAP_BEG;
       result = _wait_for_next_event(args);
@@ -362,7 +362,7 @@ struct Client {
       args[1] = reinterpret_cast<void *>(i_position);
 
 #ifdef HAVE_RB_THREAD_BLOCKING_REGION
-      result = rb_thread_blocking_region(_set_position_pos, args, RUBY_UBF_IO, NULL);
+      result = rb_thread_blocking_region(_set_position_pos, args, RUBY_UBF_IO, 0);
 #else
       TRAP_BEG;
       _set_position_pos(args);
@@ -380,7 +380,7 @@ struct Client {
       args[1] = reinterpret_cast<void *>(&s_filename);
       args[2] = reinterpret_cast<void *>(i_position);
 #ifdef HAVE_RB_THREAD_BLOCKING_REGION
-      result = rb_thread_blocking_region(_set_position_filename_pos, args, RUBY_UBF_IO, NULL);
+      result = rb_thread_blocking_region(_set_position_filename_pos, args, RUBY_UBF_IO, 0);
 #else
       TRAP_BEG;
       _set_position_name_pos(args);
@@ -416,7 +416,7 @@ struct Client {
     args[1] = reinterpret_cast<void *>(i_position);
 
 #ifdef HAVE_RB_THREAD_BLOCKING_REGION
-    result = rb_thread_blocking_region(_set_position_pos, args, RUBY_UBF_IO, NULL);
+    result = rb_thread_blocking_region(_set_position_pos, args, RUBY_UBF_IO, 0);
 #else
     TRAP_BEG;
     result = _set_position_pos(args);
@@ -464,7 +464,7 @@ struct Client {
 
     if (NIL_P(filename)) {
 #ifdef HAVE_RB_THREAD_BLOCKING_REGION
-      position = rb_thread_blocking_region(_get_position, p, RUBY_UBF_IO, NULL);
+      position = rb_thread_blocking_region(_get_position, p, RUBY_UBF_IO, 0);
 #else
       TRAP_BEG;
       position = _get_position(p);
@@ -480,7 +480,7 @@ struct Client {
       args[1] = reinterpret_cast<void *>(&s_filename);
 
 #ifdef HAVE_RB_THREAD_BLOCKING_REGION
-      position = rb_thread_blocking_region(_get_position_filename, args, RUBY_UBF_IO, NULL);
+      position = rb_thread_blocking_region(_get_position_filename, args, RUBY_UBF_IO, 0);
 #else
       TRAP_BEG;
       position = _get_position_filename(args);
@@ -497,7 +497,7 @@ struct Client {
     unsigned long position;
 
 #ifdef HAVE_RB_THREAD_BLOCKING_REGION
-    position = rb_thread_blocking_region(_get_position, p, RUBY_UBF_IO, NULL);
+    position = rb_thread_blocking_region(_get_position, p, RUBY_UBF_IO, 0);
 #else
     TRAP_BEG;
     position = _get_position(p);
