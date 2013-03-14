@@ -301,10 +301,13 @@ struct Client {
     return retval;
   }
 
+  // XXX: deprecated
   static VALUE set_position2(VALUE self, VALUE position) {
     Client *p;
     VALUE retval = Qnil;
     int result;
+
+    rb_warn("Binlog::Clien#position= is deprecated, use set_position instead.");
 
     Data_Get_Struct(self, Client, p);
 #ifndef RUBY_UBF_IO
